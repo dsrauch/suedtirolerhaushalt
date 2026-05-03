@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Haushalt Südtirol 2025 – Ausgaben</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:#f5f4f1;color:#1a1a1a;min-height:100vh;}
+  #wrapper{max-width:980px;margin:0 auto;padding:28px 20px 60px;}
+
+  /* Loading / Error */
+  #loading{display:flex;align-items:center;gap:12px;padding:40px 0;color:#888;font-size:14px;}
+  .spinner{width:20px;height:20px;border:2px solid #ddd;border-top-color:#888;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  #error-msg{background:#fff3f3;border:1px solid #f5c6c6;border-radius:8px;padding:16px 20px;color:#c0392b;font-size:13px;line-height:1.6;display:none;}
+  #error-msg a{color:#c0392b;}
+
+  #app{display:none;}
+  .kicker{font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:#888;margin-bottom:4px;}
+  h1{font-size:24px;font-weight:600;color:#111;margin-bottom:4px;}
+  .grand-total{font-size:18px;font-weight:600;color:#8a6000;margin-bottom:20px;}
+
+  /* Breadcrumb */
+  #breadcrumb{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:12px;color:#888;margin-bottom:16px;min-height:20px;}
+  .crumb{cursor:pointer;color:#4a7ab5;text-decoration:underline;text-underline-offset:2px;}
+  .crumb.active{color:#111;font-weight:500;text-decoration:none;cursor:default;}
+  .bc-sep{color:#bbb;}
+  .bc-level{color:#aaa;font-size:11px;}
+
+  /* Charts row */
+  #charts-row{display:flex;align-items:flex-start;gap:0;overflow-x:auto;padding:18px 0 18px;margin-bottom:0;}
+  .chart-col{flex-shrink:0;width:204px;}
+  .chart-label{font-size:9px;text-transform:uppercase;letter-spacing:1.2px;color:#999;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:200px;}
+  .chart-wrap{position:relative;width:200px;height:200px;}
+  .chart-wrap svg{display:block;overflow:visible;}
+  .chart-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;width:88px;}
+  .cc-label{font-size:10px;color:#888;line-height:1.3;word-break:break-word;}
+  .cc-val{font-size:11px;font-weight:600;color:#8a6000;margin-top:2px;}
+  .chart-arrow{flex-shrink:0;padding:0 2px;margin-top:92px;color:#bbb;font-size:20px;line-height:1;}
+  svg path{transition:opacity .12s;}
+
+  /* Table */
+  #table-section{margin-top:24px;background:#fff;border-radius:10px;border:1px solid #e0ddd7;overflow:hidden;}
+  .table-header{padding:12px 16px;background:#faf9f6;border-bottom:1px solid #e8e5df;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;}
+  .th-level{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#555;}
+  .th-path{font-size:11px;color:#aaa;}
+  table{width:100%;border-collapse:collapse;}
+  th{text-align:left;padding:8px 16px;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:1px;color:#999;border-bottom:1px solid #eeebe5;white-space:nowrap;}
+  th.r{text-align:right;}
+  td{padding:10px 16px;font-size:13px;border-bottom:1px solid #f0ede8;vertical-align:top;line-height:1.4;}
+  td.r{text-align:right;white-space:nowrap;}
+  tr:last-child td{border-bottom:none;}
+  tr.drillable{cursor:pointer;}
+  tr.drillable:hover td{background:#faf8f4;}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;margin-top:4px;flex-shrink:0;vertical-align:top;}
+  .item-meta{display:block;font-size:10px;color:#bbb;margin-top:2px;font-family:monospace;letter-spacing:.3px;}
+  .val{font-weight:600;color:#8a6000;}
+  .pct{color:#bbb;font-size:12px;}
+  .arrow-hint{color:#ccc;font-size:11px;margin-left:2px;}
+
+  #back-btn{display:none;margin-top:14px;padding:6px 14px;font-size:12px;border:1px solid #ccc;background:#fff;border-radius:6px;cursor:pointer;color:#555;}
+  #back-btn:hover{background:#f5f4f1;}
+
+  .detail-card{padding:16px;background:#fffef9;border:1px solid #e8e0c8;border-radius:8px;margin:12px 16px;}
+  .dc-title{font-size:13px;font-weight:500;color:#111;margin-bottom:8px;line-height:1.4;}
+  .dc-row{display:flex;gap:8px;font-size:11px;color:#888;margin-top:5px;}
+  .dc-key{min-width:90px;color:#bbb;}
+  .dc-val{color:#555;font-family:monospace;}
+  .dc-amount{font-size:18px;font-weight:600;color:#8a6000;margin-top:10px;}
+</style>
+</head>
+<body>
+<div id="wrapper">
+
+  <!-- ═══════════════════════════════════════════════════════════
+       KONFIGURATION – nur diese URL anpassen
+  ═══════════════════════════════════════════════════════════ -->
+  <script>
+    const SHEET_CSV_URL = "DEINE_GOOGLE_SHEETS_CSV_URL_HIER";
+    // Anleitung:
+    // 1. Google Sheet öffnen → Datei → Freigeben → Im Web veröffentlichen
+    // 2. Format: CSV wählen → Link kopieren
+    // 3. Den Link oben einfügen (zwischen die Anführungszeichen)
+  </script>
+  <!-- ══════════════════════════════════════════════════════════ -->
+
+  <div id="loading"><div class="spinner"></div><span>Daten werden geladen…</span></div>
+  <div id="error-msg"></div>
+
+  <div id="app">
+    <div class="kicker">Autonome Provinz Bozen – Südtirol</div>
+    <h1>Haushalt 2025 · Ausgaben</h1>
+    <div class="grand-total" id="grand-total"></div>
+    <nav id="breadcrumb"></nav>
+    <div id="charts-row"></div>
+    <div id="table-section"></div>
+    <button id="back-btn" onclick="goBack()">← Zurück</button>
+  </div>
+</div>
+
+<script>
+// ─── KONFIGURATION ─────────────────────────────────────────────
+// Spaltennamen im Google Sheet (Zeile 1 = Header)
+const COL = {
+  l1: "Aufgabenbereich",
+  l2: "Programm",
+  l3: "Titel",
+  l4: "Gruppierung",
+  l5: "Beschreibung",
+  kap: "Kapitel-Nr",
+  cod: "COD-Schlüssel",
+  val: "Betrag 2025 (€)"
+};
+
+// ─── KONSTANTEN ────────────────────────────────────────────────
+const PAL=["#378ADD","#1D9E75","#D85A30","#BA7517","#D4537E","#534AB7","#E24B4A","#639922","#5DCAA5","#e07b39"];
+const KEYS=["l1","l2","l3","l4","l5"];
+const LVLS=["Aufgabenbereiche","Programme","Titel","Gruppierungen","Einzelausgaben"];
+
+let DATA=[];
+let path=[];
+let selectedLeaf=null;
+
+// ─── HILFSFUNKTIONEN ──────────────────────────────────────────
+function fmt(v){
+  if(v>=1e6)return(v/1e6).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" Mio €";
+  return v.toLocaleString("de-DE",{maximumFractionDigits:0})+" €";
+}
+function strip(s){return String(s).replace(/^\d+:\s*/,"");}
+
+// Deutsches Zahlenformat: "1 234 567,89" oder "1.234.567,89" → float
+function parseAmount(s){
+  if(!s)return 0;
+  let clean=String(s).trim().replace(/\u00a0/g," ");
+  // Entferne Tausender-Trennzeichen (Leerzeichen oder Punkt), ersetze Komma durch Punkt
+  clean=clean.replace(/\s/g,"").replace(/\./g,"").replace(",",".");
+  return parseFloat(clean)||0;
+}
+
+// ─── CSV PARSER ───────────────────────────────────────────────
+function parseCSV(text){
+  const lines=text.split(/\r?\n/);
+  if(!lines.length)return[];
+  const rows=[];
+  for(const line of lines){
+    if(!line.trim())continue;
+    // Einfacher CSV-Parser mit Anführungszeichen-Unterstützung
+    const cols=[];let cur="";let inQ=false;
+    for(let i=0;i<line.length;i++){
+      const c=line[i];
+      if(c==='"'){inQ=!inQ;}
+      else if(c===','&&!inQ){cols.push(cur.trim());cur="";}
+      else{cur+=c;}
+    }
+    cols.push(cur.trim());
+    rows.push(cols);
+  }
+  return rows;
+}
+
+function csvToData(text){
+  const rows=parseCSV(text);
+  if(rows.length<2)return[];
+  // Finde Header-Zeile(n) — Zeilen, die mit dem l1-Spaltennamen beginnen, überspringen
+  let headerIdx=-1;
+  for(let i=0;i<rows.length;i++){
+    if(rows[i][0]&&rows[i][0].toString().toLowerCase().includes("aufgaben")){
+      headerIdx=i;
+      break;
+    }
+  }
+  if(headerIdx<0){console.warn("Header nicht gefunden – verwende Zeile 0");headerIdx=0;}
+
+  const header=rows[headerIdx].map(h=>h.replace(/['"]/g,"").trim());
+  const idx={};
+  Object.entries(COL).forEach(([key,name])=>{
+    const i=header.findIndex(h=>h.toLowerCase().includes(name.toLowerCase().substring(0,8)));
+    if(i>=0)idx[key]=i;
+    else console.warn("Spalte nicht gefunden:",name);
+  });
+
+  const result=[];
+  for(let i=headerIdx+1;i<rows.length;i++){
+    const r=rows[i];
+    if(!r||!r[idx.l1]||r[idx.l1].toString().toLowerCase().includes("aufgaben"))continue; // überspringe leere & Wiederholungsheader
+    const val=parseAmount(r[idx.val]);
+    if(!val)continue;
+    result.push({
+      l1:r[idx.l1]||"",l2:r[idx.l2]||"",l3:r[idx.l3]||"",l4:r[idx.l4]||"",l5:r[idx.l5]||"",
+      kap:r[idx.kap]||"",cod:r[idx.cod]||"",v:val
+    });
+  }
+  return result;
+}
+
+// ─── DATEN LADEN ─────────────────────────────────────────────
+async function loadData(){
+  const loadEl=document.getElementById("loading");
+  const errEl=document.getElementById("error-msg");
+  const appEl=document.getElementById("app");
+
+  if(!SHEET_CSV_URL||SHEET_CSV_URL.includes("DEINE_GOOGLE")){
+    loadEl.style.display="none";
+    errEl.style.display="block";
+    errEl.innerHTML=`<strong>Noch keine Datenquelle konfiguriert.</strong><br><br>
+      Bitte folgende Schritte ausführen:<br>
+      1. Google Sheet öffnen → <strong>Datei → Freigeben → Im Web veröffentlichen</strong><br>
+      2. Format <strong>CSV</strong> wählen → Link kopieren<br>
+      3. In dieser Datei ganz oben im &lt;script&gt;-Tag den Wert von <code>SHEET_CSV_URL</code> ersetzen.<br><br>
+      Zum Testen: Die Datei <a href="suedtirol_haushalt.html">suedtirol_haushalt.html</a> enthält eingebettete Testdaten.`;
+    return;
+  }
+
+  try{
+    const res=await fetch(SHEET_CSV_URL);
+    if(!res.ok)throw new Error(`HTTP ${res.status}`);
+    const text=await res.text();
+    DATA=csvToData(text);
+    if(!DATA.length)throw new Error("Keine Daten gefunden – bitte Spaltenbezeichnungen prüfen.");
+    loadEl.style.display="none";
+    appEl.style.display="block";
+    render();
+  }catch(e){
+    loadEl.style.display="none";
+    errEl.style.display="block";
+    errEl.innerHTML=`<strong>Fehler beim Laden der Daten:</strong> ${e.message}<br><br>
+      Mögliche Ursachen:<br>
+      • Sheet ist nicht veröffentlicht (Datei → Im Web veröffentlichen → CSV)<br>
+      • URL ist falsch oder abgelaufen<br>
+      • Browser blockiert externe Anfragen (dann lokal per kleinem Server öffnen)<br><br>
+      <em>Technischer Hinweis: ${e}</em>`;
+  }
+}
+
+// ─── DATEN-ABFRAGEN ───────────────────────────────────────────
+function getItems(depth){
+  const filtered=DATA.filter(r=>KEYS.slice(0,depth).every((k,i)=>r[k]===path[i]));
+  if(depth>=5)return[];
+  if(depth===4){
+    return filtered.map(r=>({key:r.l5,label:r.l5,val:r.v,leaf:true,kap:r.kap,cod:r.cod}));
+  }
+  const m=new Map();
+  filtered.forEach(r=>{const k=r[KEYS[depth]];m.set(k,(m.get(k)||0)+r.v);});
+  return[...m.entries()].map(([k,v])=>({key:k,label:strip(k),val:v,leaf:false})).sort((a,b)=>b.val-a.val);
+}
+
+// ─── SVG DONUT ────────────────────────────────────────────────
+function makeSVGDonut(items,selIdx,size){
+  if(!items.length)return`<svg width="${size}" height="${size}"></svg>`;
+  // pad=extra space around SVG so exploded slices never clip
+  const pad=16;
+  const inner=size-pad*2;
+  const cx=size/2,cy=size/2,R=inner/2-2,r=R*0.54;
+  const total=items.reduce((s,i)=>s+i.val,0);
+  let angle=-Math.PI/2;let paths="";
+  items.forEach((item,i)=>{
+    const slice=Math.max(2*Math.PI*(item.val/total),0.01);
+    const end=angle+slice;
+    const explode=i===selIdx?12:0;
+    const midA=angle+slice/2;
+    const ox=Math.cos(midA)*explode,oy=Math.sin(midA)*explode;
+    const x1=cx+ox+Math.cos(angle)*R,y1=cy+oy+Math.sin(angle)*R;
+    const x2=cx+ox+Math.cos(end)*R,y2=cy+oy+Math.sin(end)*R;
+    const x3=cx+ox+Math.cos(end)*r,y3=cy+oy+Math.sin(end)*r;
+    const x4=cx+ox+Math.cos(angle)*r,y4=cy+oy+Math.sin(angle)*r;
+    const lg=slice>Math.PI?1:0;
+    const opacity=(selIdx>=0&&i!==selIdx)?0.2:1;
+    paths+=`<path d="M${x1.toFixed(1)},${y1.toFixed(1)} A${R},${R} 0 ${lg},1 ${x2.toFixed(1)},${y2.toFixed(1)} L${x3.toFixed(1)},${y3.toFixed(1)} A${r},${r} 0 ${lg},0 ${x4.toFixed(1)},${y4.toFixed(1)} Z" fill="${PAL[i%PAL.length]}" opacity="${opacity}" data-idx="${i}" style="cursor:pointer;stroke:#f5f4f1;stroke-width:1.5;"/>`;
+    angle=end;
+  });
+  return`<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="overflow:visible;">${paths}</svg>`;
+}
+
+// ─── RENDER ──────────────────────────────────────────────────
+function render(){
+  const depth=path.length;
+  const grandTotal=DATA.reduce((s,r)=>s+r.v,0);
+  document.getElementById("grand-total").textContent=fmt(grandTotal);
+  document.getElementById("back-btn").style.display=depth>0?"inline-block":"none";
+
+  // Breadcrumb
+  const bc=document.getElementById("breadcrumb");
+  bc.innerHTML="";
+  const addCrumb=(label,idx,active)=>{
+    const s=document.createElement("span");
+    s.textContent=label;s.className="crumb"+(active?" active":"");
+    if(!active)s.onclick=()=>{path=path.slice(0,idx);selectedLeaf=null;render();};
+    bc.appendChild(s);
+  };
+  addCrumb("Gesamt",0,depth===0);
+  path.forEach((p,i)=>{
+    const sep=document.createElement("span");sep.className="bc-sep";sep.textContent=" › ";bc.appendChild(sep);
+    addCrumb(strip(p),i+1,i===path.length-1);
+  });
+  if(depth>0){
+    const lbl=document.createElement("span");lbl.className="bc-level";lbl.textContent=" · "+LVLS[depth];bc.appendChild(lbl);
+  }
+
+  // Charts row
+  const row=document.getElementById("charts-row");
+  row.innerHTML="";
+  const numCharts=Math.min(depth+1,5);
+  for(let d=0;d<numCharts;d++){
+    const items=getItems(d);if(!items.length)continue;
+    const total=items.reduce((s,i)=>s+i.val,0);
+    const selKey=d<path.length?path[d]:(d===4&&selectedLeaf?selectedLeaf:null);
+    const selIdx=selKey?items.findIndex(i=>i.key===selKey):-1;
+    const selItem=selIdx>=0?items[selIdx]:null;
+
+    const col=document.createElement("div");col.className="chart-col";
+    const lbl=document.createElement("div");lbl.className="chart-label";lbl.textContent=LVLS[d];col.appendChild(lbl);
+    const cWrap=document.createElement("div");cWrap.className="chart-wrap";
+    cWrap.innerHTML=makeSVGDonut(items,selIdx,200);
+    const ctr=document.createElement("div");ctr.className="chart-center";
+    ctr.innerHTML=selItem
+      ?`<div class="cc-label">${selItem.label.substring(0,24)}${selItem.label.length>24?"…":""}</div><div class="cc-val">${fmt(selItem.val)}</div>`
+      :`<div class="cc-label">gesamt</div><div class="cc-val">${fmt(total)}</div>`;
+    cWrap.appendChild(ctr);col.appendChild(cWrap);row.appendChild(col);
+
+    if(d<numCharts-1){const arr=document.createElement("div");arr.className="chart-arrow";arr.textContent="›";row.appendChild(arr);}
+
+    const capturedD=d,capturedItems=items;
+    cWrap.querySelectorAll("path[data-idx]").forEach(p=>{
+      const idx=parseInt(p.dataset.idx);
+      p.onmouseenter=()=>{p.setAttribute("opacity",Math.min(parseFloat(p.getAttribute("opacity"))+0.25,1));};
+      p.onmouseleave=()=>{p.setAttribute("opacity",capturedItems.indexOf(capturedItems[idx])===selIdx?1:(selIdx>=0?0.2:1));};
+      p.onclick=()=>{
+        const it=capturedItems[idx];
+        if(capturedD<4&&!it.leaf){path=path.slice(0,capturedD).concat([it.key]);selectedLeaf=null;render();}
+        else if(capturedD===4&&it.leaf){selectedLeaf=it.key;render();}
+      };
+    });
+  }
+
+  // Table
+  const tableItems=getItems(depth);
+  const tableTotal=tableItems.reduce((s,i)=>s+i.val,0);
+  const sec=document.getElementById("table-section");sec.innerHTML="";
+  const th=document.createElement("div");th.className="table-header";
+  const pathStr=path.map(p=>strip(p)).join(" › ");
+  th.innerHTML=`<span class="th-level">${LVLS[depth]}</span>${depth>0?`<span class="th-path">in: ${pathStr}</span>`:""}`;
+  sec.appendChild(th);
+
+  const tbl=document.createElement("table");
+  tbl.innerHTML=`<thead><tr><th style="width:58%;">Bezeichnung</th><th class="r">Betrag</th><th class="r">Anteil</th></tr></thead>`;
+  const tbody=document.createElement("tbody");
+
+  tableItems.forEach((item,i)=>{
+    const pct=tableTotal>0?(item.val/tableTotal*100).toFixed(1):"0.0";
+    const tr=document.createElement("tr");
+    if(!item.leaf)tr.className="drillable";
+    if(item.leaf&&item.key===selectedLeaf)tr.style.background="#fffbee";
+    const meta=item.leaf?`<span class="item-meta">${item.kap} · ${item.cod}</span>`:"";
+    const arrow=!item.leaf?`<span class="arrow-hint">›</span>`:"";
+    tr.innerHTML=`<td><span class="dot" style="background:${PAL[i%PAL.length]};"></span>${item.label}${arrow}${meta}</td>
+      <td class="r val">${fmt(item.val)}</td><td class="r pct">${pct}%</td>`;
+    if(!item.leaf){const k=item.key;tr.onclick=()=>{path=[...path,k];selectedLeaf=null;render();};}
+    else{tr.style.cursor="default";tr.onclick=()=>{selectedLeaf=item.key;render();};}
+    tbody.appendChild(tr);
+  });
+  tbl.appendChild(tbody);sec.appendChild(tbl);
+
+  if(selectedLeaf&&depth===4){
+    const leaf=tableItems.find(i=>i.key===selectedLeaf);
+    if(leaf){
+      const dc=document.createElement("div");dc.className="detail-card";
+      dc.innerHTML=`<div class="dc-title">${leaf.label}</div>
+        <div class="dc-row"><span class="dc-key">Kapitel-Nr.</span><span class="dc-val">${leaf.kap}</span></div>
+        <div class="dc-row"><span class="dc-key">COD-Schlüssel</span><span class="dc-val">${leaf.cod}</span></div>
+        <div class="dc-amount">${fmt(leaf.val)}</div>`;
+      sec.appendChild(dc);
+    }
+  }
+}
+
+function goBack(){path=path.slice(0,-1);selectedLeaf=null;render();}
+
+// Start
+loadData();
+</script>
+</body>
+</html>
