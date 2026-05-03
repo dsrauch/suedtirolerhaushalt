@@ -129,13 +129,30 @@ function fmt(v){
 }
 function strip(s){return String(s).replace(/^\d+:\s*/,"");}
 
-// Deutsches Zahlenformat: "1 234 567,89" oder "1.234.567,89" → float
+// Zahlenformat auto-erkennen: deutsch (1.234,56) oder englisch (1,234.56)
 function parseAmount(s){
   if(!s)return 0;
-  let clean=String(s).trim().replace(/\u00a0/g," ");
-  // Entferne Tausender-Trennzeichen (Leerzeichen oder Punkt), ersetze Komma durch Punkt
-  clean=clean.replace(/\s/g,"").replace(/\./g,"").replace(",",".");
-  return parseFloat(clean)||0;
+  let clean=String(s).trim()
+    .replace(/[€$£\u00a0\u202f]/g,"")  // Währungssymbole + geschützte Leerzeichen
+    .replace(/\s/g,"")                  // normale Leerzeichen
+    .trim();
+  if(!clean)return 0;
+
+  const lastComma=clean.lastIndexOf(",");
+  const lastDot=clean.lastIndexOf(".");
+
+  let normalized;
+  if(lastComma>lastDot){
+    // Deutsches Format: 1.234.567,89 → Punkte weg, Komma → Punkt
+    normalized=clean.replace(/\./g,"").replace(",",".");
+  } else if(lastDot>lastComma){
+    // Englisches Format: 1,234,567.89 → Kommas weg
+    normalized=clean.replace(/,/g,"");
+  } else {
+    // Keine Trennzeichen: direkt parsen
+    normalized=clean;
+  }
+  return parseFloat(normalized)||0;
 }
 
 // ─── CSV PARSER ───────────────────────────────────────────────
