@@ -77,7 +77,7 @@
        KONFIGURATION – nur diese URL anpassen
   ═══════════════════════════════════════════════════════════ -->
   <script>
-    const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQCsYgO7uzzMoPCGCCL1Z9LvNBFmQs_u87omoduUexmoJn1FQmvxyAB3pPG7EP56pc6iJXoDrmLjnY7/pubhtml";
+    const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQCsYgO7uzzMoPCGCCL1Z9LvNBFmQs_u87omoduUexmoJn1FQmvxyAB3pPG7EP56pc6iJXoDrmLjnY7/pub?output=csv";
     // Anleitung:
     // 1. Google Sheet öffnen → Datei → Freigeben → Im Web veröffentlichen
     // 2. Format: CSV wählen → Link kopieren
@@ -162,35 +162,70 @@ function parseCSV(text){
 function csvToData(text){
   const rows=parseCSV(text);
   if(rows.length<2)return[];
-  // Finde Header-Zeile(n) — Zeilen, die mit dem l1-Spaltennamen beginnen, überspringen
-  let headerIdx=-1;
-  for(let i=0;i<rows.length;i++){
-    if(rows[i][0]&&rows[i][0].toString().toLowerCase().includes("aufgaben")){
-      headerIdx=i;
-      break;
-    }
+
+  // 1. Finde Header-Zeile: erste Zeile mit mind. 5 gefüllten Spalten
+  let headerIdx=0;
+  for(let i=0;i<Math.min(rows.length,10);i++){
+    const filled=rows[i].filter(c=>c&&c.trim().length>0).length;
+    if(filled>=5){headerIdx=i;break;}
   }
-  if(headerIdx<0){console.warn("Header nicht gefunden – verwende Zeile 0");headerIdx=0;}
 
   const header=rows[headerIdx].map(h=>h.replace(/['"]/g,"").trim());
+  console.log("CSV Header gefunden:",header);
+
+  // 2. Spalten per Name suchen (flexibel, mehrere Varianten)
+  const ALIASES={
+    l1:["aufgaben","mission","aufgab"],
+    l2:["programm","program"],
+    l3:["titel","title"],
+    l4:["gruppier","group","grupp"],
+    l5:["beschreib","descrip","bezeich","descript"],
+    kap:["kapitel","chapter","kap"],
+    cod:["cod","schlüss","schluss","code"],
+    val:["betrag","amount","summe","wert","euro","€"]
+  };
   const idx={};
-  Object.entries(COL).forEach(([key,name])=>{
-    const i=header.findIndex(h=>h.toLowerCase().includes(name.toLowerCase().substring(0,8)));
+  Object.entries(ALIASES).forEach(([key,aliases])=>{
+    const i=header.findIndex(h=>{
+      const hl=h.toLowerCase().replace(/[^a-z0-9äöü]/g,"");
+      return aliases.some(a=>hl.includes(a.toLowerCase().replace(/[^a-z0-9äöü]/g,"")));
+    });
     if(i>=0)idx[key]=i;
-    else console.warn("Spalte nicht gefunden:",name);
   });
 
+  // 3. Fallback: Spalten nach Position (A=0,B=1,...,H=7)
+  if(Object.keys(idx).length<6){
+    console.warn("Spalten per Name nicht erkannt – verwende Position A-H");
+    idx.l1=0;idx.l2=1;idx.l3=2;idx.l4=3;idx.l5=4;idx.kap=5;idx.cod=6;idx.val=7;
+  }
+  console.log("Spalten-Mapping:",idx);
+
+  // 4. Datenzeilen einlesen
+  const headerRow=rows[headerIdx];
   const result=[];
   for(let i=headerIdx+1;i<rows.length;i++){
     const r=rows[i];
-    if(!r||!r[idx.l1]||r[idx.l1].toString().toLowerCase().includes("aufgaben"))continue; // überspringe leere & Wiederholungsheader
+    if(!r||r.length<4)continue;
+    const firstCell=(r[0]||"").toString().trim();
+    if(!firstCell)continue;
+    // Wiederholungsheader überspringen
+    if(firstCell.toLowerCase().replace(/[^a-z]/g,"")===
+       (headerRow[0]||"").toLowerCase().replace(/[^a-z]/g,""))continue;
     const val=parseAmount(r[idx.val]);
-    if(!val)continue;
+    if(!val&&val!==0)continue;
+    if(val===0)continue;
     result.push({
-      l1:r[idx.l1]||"",l2:r[idx.l2]||"",l3:r[idx.l3]||"",l4:r[idx.l4]||"",l5:r[idx.l5]||"",
-      kap:r[idx.kap]||"",cod:r[idx.cod]||"",v:val
+      l1:(r[idx.l1]||"").trim(),
+      l2:(r[idx.l2]||"").trim(),
+      l3:(r[idx.l3]||"").trim(),
+      l4:(r[idx.l4]||"").trim(),
+      l5:(r[idx.l5]||"").trim(),
+      kap:(r[idx.kap]||"").trim(),
+      cod:(r[idx.cod]||"").trim(),
+      v:val
     });
   }
+  console.log("Geladene Zeilen:",result.length);
   return result;
 }
 
@@ -217,7 +252,10 @@ async function loadData(){
     if(!res.ok)throw new Error(`HTTP ${res.status}`);
     const text=await res.text();
     DATA=csvToData(text);
-    if(!DATA.length)throw new Error("Keine Daten gefunden – bitte Spaltenbezeichnungen prüfen.");
+    if(!DATA.length){
+      const preview=text.substring(0,300).replace(/</g,"&lt;");
+      throw new Error(`Keine Daten erkannt.<br><br><strong>Erste 300 Zeichen der CSV:</strong><br><code style="font-size:10px;word-break:break-all;">${preview}</code><br><br>Bitte prüfe ob das Sheet als CSV veröffentlicht ist (nicht HTML).`);
+    }
     loadEl.style.display="none";
     appEl.style.display="block";
     render();
